@@ -193,6 +193,14 @@ class Importmap::Map
     end
   end
 
+  def cache_as(name) # :nodoc:
+    if result = cache[name.to_s]
+      result
+    else
+      cache[name.to_s] = yield
+    end
+  end
+
   private
     MappedDir  = Struct.new(:dir, :path, :under, :preload, :integrity, keyword_init: true)
     MappedFile = Struct.new(:name, :path, :preload, :integrity, keyword_init: true)
@@ -204,14 +212,6 @@ class Importmap::Map
       end
     else
       attr_reader :cache
-    end
-
-    def cache_as(name)
-      if result = cache[name.to_s]
-        result
-      else
-        cache[name.to_s] = yield
-      end
     end
 
     def clear_cache
