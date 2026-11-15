@@ -25,11 +25,12 @@ module Importmap::ImportmapTagsHelper
   # (defaults to Rails.application.importmap), such that they'll be fetched
   # in advance by browsers supporting this link type (https://caniuse.com/?search=modulepreload).
   def javascript_importmap_module_preload_tags(importmap = Rails.application.importmap, entry_point: "application")
-    packages = importmap.preloaded_module_packages(resolver: self, entry_point:, cache_key: entry_point)
+    nonce = request&.content_security_policy_nonce
 
-    _generate_preload_tags(packages) do |(path, package), nonce|
-      integrity = package.integrity
-      tag.link rel: "modulepreload", href: path, nonce: nonce, integrity: integrity
+    if nonce.nil?
+      importmap.cache_as("module_preload_tags:#{entry_point}") { _generate_module_preload_tags(importmap, entry_point, nil) }.dup
+    else
+      _generate_module_preload_tags(importmap, entry_point, nonce)
     end
   end
 
@@ -41,11 +42,18 @@ module Importmap::ImportmapTagsHelper
   end
 
   private
-    def _generate_preload_tags(items)
-      content_security_policy_nonce = request&.content_security_policy_nonce
+    def _generate_module_preload_tags(importmap, entry_point, nonce)
+      packages = importmap.preloaded_module_packages(resolver: self, entry_point:, cache_key: entry_point)
 
+      _generate_preload_tags(packages, nonce) do |(path, package), nonce|
+        integrity = package.integrity
+        tag.link rel: "modulepreload", href: path, nonce: nonce, integrity: integrity
+      end
+    end
+
+    def _generate_preload_tags(items, nonce = request&.content_security_policy_nonce)
       safe_join(Array(items).collect { |item|
-        yield(item, content_security_policy_nonce)
+        yield(item, nonce)
       }, "\n")
     end
 end

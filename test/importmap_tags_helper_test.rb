@@ -63,6 +63,48 @@ class Importmap::ImportmapTagsHelperTest < ActionView::TestCase
     assert_match(/nonce="iyhD0Yc0W\+c="/, javascript_inline_importmap_tag)
     assert_match(/nonce="iyhD0Yc0W\+c="/, javascript_import_module_tag("application"))
     assert_match(/nonce="iyhD0Yc0W\+c="/, javascript_importmap_module_preload_tags)
+    assert_match(/nonce="iyhD0Yc0W\+c="/, javascript_module_preload_tag("/a.js"))
+  ensure
+    @request = nil
+  end
+
+  test "preload tags are reused per entry point until the importmap changes, unless there is a nonce" do
+    importmap = Importmap::Map.new
+    importmap.pin "foo", preload: true
+    importmap.pin "bar", preload: "admin"
+
+    @request = FakeRequest.new
+    refute_includes javascript_importmap_module_preload_tags(importmap), "/bar.js"
+    assert_includes javascript_importmap_module_preload_tags(importmap, entry_point: "admin"), "/bar.js"
+
+    @request = FakeRequest.new("first")
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="first")
+    @request = FakeRequest.new("second")
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="second")
+    @request = FakeRequest.new(false)
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="false")
+
+    @request = FakeRequest.new
+    javascript_importmap_module_preload_tags(importmap) << "appended"
+    assert_equal %(<link rel="modulepreload" href="/foo.js">), javascript_importmap_module_preload_tags(importmap)
+
+    importmap.pin "baz", preload: true
+    assert_includes javascript_importmap_module_preload_tags(importmap), "/baz.js"
+  ensure
+    @request = nil
+  end
+
+  test "preload tags are not cached when the nonce is generated during the call" do
+    importmap = Importmap::Map.new
+    importmap.pin "foo", preload: true
+    nonces = [nil, "late"]
+
+    @request = FakeRequest.new
+    @request.define_singleton_method(:content_security_policy_nonce) { nonces.shift }
+    javascript_importmap_module_preload_tags(importmap)
+
+    @request = FakeRequest.new
+    assert_no_match(/nonce/, javascript_importmap_module_preload_tags(importmap))
   ensure
     @request = nil
   end
