@@ -67,6 +67,32 @@ class Importmap::ImportmapTagsHelperTest < ActionView::TestCase
     @request = nil
   end
 
+  test "preload tags are reused per entry point until the importmap changes, unless there is a nonce" do
+    importmap = Importmap::Map.new
+    importmap.pin "foo", preload: true
+    importmap.pin "bar", preload: "admin"
+
+    @request = FakeRequest.new
+    refute_includes javascript_importmap_module_preload_tags(importmap), "/bar.js"
+    assert_includes javascript_importmap_module_preload_tags(importmap, entry_point: "admin"), "/bar.js"
+
+    @request = FakeRequest.new("first")
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="first")
+    @request = FakeRequest.new("second")
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="second")
+    @request = FakeRequest.new(false)
+    assert_includes javascript_importmap_module_preload_tags(importmap), %(nonce="false")
+
+    @request = FakeRequest.new
+    javascript_importmap_module_preload_tags(importmap) << "appended"
+    assert_equal %(<link rel="modulepreload" href="/foo.js">), javascript_importmap_module_preload_tags(importmap)
+
+    importmap.pin "baz", preload: true
+    assert_includes javascript_importmap_module_preload_tags(importmap), "/baz.js"
+  ensure
+    @request = nil
+  end
+
   test "using a custom importmap" do
     importmap = Importmap::Map.new
     importmap.pin "foo", preload: true
